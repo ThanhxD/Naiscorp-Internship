@@ -106,7 +106,7 @@ int main() {
 	memset(cookie, '\0', COOKIE_SIZE);
 	Get_cookie(cookie, response);
 	printf("===>Cookie2: \n%s\n", cookie);
-	Reveive_response(response, ssl);
+	Reveive_response(response, ssl);			// flush ssl buffer
 
 	//request3
 	request3 = (char *) malloc(strlen(request3_fm) + strlen(cookie));
@@ -227,34 +227,29 @@ void Get_cookie(char *ck, char *message) {
 	char *buffer = NULL;
 
 	msg = strstr(message, temp); 						// find set-cookie in message
-	if (msg == NULL){									// not found
-		strcpy(ck, "null");								// return null
+	if (msg == NULL){							// not found
+		strcpy(ck, "null");						// return 'null'
 		return;
 	}
 	start = (char *) malloc(COOKIE_SIZE*sizeof(char));
 	buffer = (char *) malloc(COOKIE_SIZE*sizeof(char));
-	strcpy(start, msg);									// copy msg to start
+	strcpy(start, msg);							// copy msg to start
 	do {
 		memset(buffer, '\0', COOKIE_SIZE*sizeof(char));
-		st = strstr(start, temp);						// find set-cookie in start
-		if (st == NULL) break;							// don't have anymore => break
-		st += strlen(temp);								// move st pointer to content of feild
+		st = strstr(start, temp);					// find set-cookie in start
+		if (st == NULL) break;						// don't have anymore => break
+		st += strlen(temp);						// move st pointer to content of feild
 		i = 0;
-		while (st[i] != '\n') i++;						// find the character endline '\n'
-		//strncpy(buffer, st, i);							// copy content to buffer
-		//printf("___%s\n", buffer);
-		for (j = 0; j < i; j++) {
+		while (st[i] != '\n') i++;
+		for (j = 0; j < i; j++) {					// copy to buffer
 			buffer[j] = st[j];
 		}
-		//printf("__ %s\n", buffer);
-		//strncat(cookie, buffer, i);						// concat buffer to cookie
-		for (j = 0; j < i; j++) {
+		printf("__%s\n", buffer);
+		for (j = 0; j < i; j++) {					// concat buffer to cookie
 			cookie[length+j] = buffer[j];
-			//printf("+++%s\n", cookie);
 		}
-		cookie[length+i] = ';';							// add ;
+		cookie[length+i] = ';';						// add ';'
 		length += strlen(buffer) + 1;
-		//printf("__%d__\n", length);
 		start += (strlen(temp) + i + 1);				// move start pointer to next feild
 	} while (st != NULL);
 	cookie[length] = '\0';
