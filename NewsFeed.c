@@ -18,6 +18,8 @@ void Send_request(char *, SSL *);
 void Reveive_response(char *, SSL *);
 void Get_cookie(char *, char *);
 
+FILE *f, *fc;
+
 int main() {
 
 	SSL *ssl;
@@ -57,7 +59,7 @@ int main() {
 		printf("Successfully connect to the socket!\n");
 	}
 
-	// attach the SSL session tho the socket descriptor
+	// attach the SSL session to the socket descriptor
 	SSL_set_fd(ssl, sockfd);
 
 	// try to connect
@@ -75,11 +77,13 @@ int main() {
 	// second for post login info
 	char request2_fm[] = "POST /login.php?login_attempt=1&lwv=110 HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nCookie: %s\nContent-Type: application/x-www-form-urlencoded\nContent-Length: %d\nConnection: keep-alive\n\n%s";
 	//third for html content 
-	char request3_fm[] = "GET /?stype=lo&jlou=AfckdnKWRpamqRBPiU6zEbGd08BpXCL_meedSJ4vd73GvD12cQ-bI1w0jP6-Jz0TJUvXbPhlr7pxSaLHEqZxTmT-FldiCeOOUqR5RXoXIvLubQ&smuh=54996&lh=Ac_qi94nsLh9UDvh HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept-Language: en-US,en;q=0.5\nAccept-Encoding: gzip, deflate, br\nCookie: %s\nConnection: keep-alive\n\n";
+	char request3_fm[] = "GET / HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\nAccept-Language: en-US,en;q=0.5\nAccept-Encoding: gzip, deflate, br\nCookie: %s\nConnection: keep-alive\n\n";
 
 	char *request2 = NULL, *request3 = NULL, *response = NULL, *cookie = NULL;
 	const int RESPONSE_SIZE = 1048576;  // 1MB
 	const int COOKIE_SIZE = 102400; 	// 100KB
+	f = fopen("fb.txt", "w");
+	fc = fopen("ck.txt", "w");
 
 	response = (char *) malloc(RESPONSE_SIZE*sizeof(char));
 	cookie = (char *) malloc(COOKIE_SIZE*sizeof(char));
@@ -106,18 +110,12 @@ int main() {
 	memset(cookie, '\0', COOKIE_SIZE);
 	Get_cookie(cookie, response);
 	printf("===>Cookie2: \n%s\n", cookie);
-	Reveive_response(response, ssl);			// flush ssl buffer
-
+	
 	//request3
 	request3 = (char *) malloc(strlen(request3_fm) + strlen(cookie));
 	sprintf(request3, request3_fm, cookie);
+	//printf("===>Request3: \n%s\n", request3);
 	Send_request(request3, ssl);
-	memset(response, '\0', RESPONSE_SIZE);
-	Reveive_response(response, ssl);
-	printf("===>Response3: \n%s\n", response);
-	memset(response, '\0', RESPONSE_SIZE);
-	Reveive_response(response, ssl);
-	printf("===>Response3: \n%s\n", response);
 	memset(response, '\0', RESPONSE_SIZE);
 	Reveive_response(response, ssl);
 	printf("===>Response3: \n%s\n", response);
@@ -132,6 +130,8 @@ int main() {
 	SSL_free(ssl);
 	close(sockfd);
 	SSL_CTX_free(ctx);
+	fclose(f);
+	fclose(fc);
 
 	return 0;
 }
@@ -188,29 +188,40 @@ void Send_request(char *request, SSL *ssl) {
 
 void Reveive_response(char *resp, SSL *ssl) {
 
-	const int BUFFER_SIZE = 1024;
 	char response[1048576];
-	char *buffer = NULL;			// to read from ssl
 	int bytes;						// number of bytes actually read
 	int received = 0;				// number of bytes received
+	int i, line_length;
+	char c[1];
 
-	buffer = (char *) malloc(BUFFER_SIZE*sizeof(char));		// malloc
 	memset(response, '\0', sizeof(response));				// response assign = '\0'
-	do{
-		memset(buffer, '\0', BUFFER_SIZE);					// empty buffer
-		bytes = SSL_read(ssl, buffer, BUFFER_SIZE);
-		if (bytes < 0) {
-			printf("Error: Receive response\n");
-			exit(0);
-		}
-		if (bytes == 0) break;
-		received += bytes;
-		printf("Received...%d bytes\n", received);
-		strncat(response, buffer, bytes);					// concat buffer to response
-	} while (SSL_pending(ssl));								// while pending
-	response[received] = '\0';
+
+	/***********Try to read byte by byte***********/
+
+	i = 0;
+	line_length = 0;								// to check length of each line
+	do {
+		bytes = SSL_read(ssl, c, 1);				// read 1 byte to c[0]
+		if (bytes  <= 0) break;						// read fall or connection closed
+		if (c[0] == '\n') {							// if '\n'
+			if (line_length == 0) break;			// empty line, so end header
+			else line_length = 0;					// else reset for new line
+		} else if ( c[0] != '\r') line_length++;	// inc length
+		response[i++] = c[0];						// add to response
+		received += bytes;							// count
+ 	} while (1);
+	fprintf(f, "%s\n", response);
+
+	/***********************************************/
+
+	/********Then try to read body if needed********/
+
+	
+
+	/***********************************************/
+	fprintf(f, "=============================\n");
+	printf("Received...%d\n", received);
 	printf("Receive DONE\n");
-	free(buffer);
 	strcpy(resp, response);									// return via resp
 	
 }
@@ -224,36 +235,29 @@ void Get_cookie(char *ck, char *message) {
 	char *start = NULL;
 	char *msg = NULL;
 	char *st = NULL;
-	char *buffer = NULL;
 
 	msg = strstr(message, temp); 						// find set-cookie in message
-	if (msg == NULL){							// not found
-		strcpy(ck, "null");						// return 'null'
+	if (msg == NULL){									// not found
+		strcpy(ck, "null");								// return null
 		return;
 	}
 	start = (char *) malloc(COOKIE_SIZE*sizeof(char));
-	buffer = (char *) malloc(COOKIE_SIZE*sizeof(char));
-	strcpy(start, msg);							// copy msg to start
+	strcpy(start, msg);									// copy msg to start
 	do {
-		memset(buffer, '\0', COOKIE_SIZE*sizeof(char));
-		st = strstr(start, temp);					// find set-cookie in start
-		if (st == NULL) break;						// don't have anymore => break
-		st += strlen(temp);						// move st pointer to content of feild
+		st = strstr(start, temp);						// find set-cookie in start
+		if (st == NULL) break;							// don't have anymore => break
+		st += strlen(temp);								// move st pointer to content of feild
 		i = 0;
-		while (st[i] != '\n') i++;
-		for (j = 0; j < i; j++) {					// copy to buffer
-			buffer[j] = st[j];
+		while (st[i] != '\n') i++;						// find the character endline '\n'
+		for (j = 0; j < i; j++) {						// copy content to cookie
+			cookie[length+j] = st[j];
 		}
-		printf("__%s\n", buffer);
-		for (j = 0; j < i; j++) {					// concat buffer to cookie
-			cookie[length+j] = buffer[j];
-		}
-		cookie[length+i] = ';';						// add ';'
-		length += strlen(buffer) + 1;
+		cookie[length+i-1] = ';';							// add ';'
+		length += i;
 		start += (strlen(temp) + i + 1);				// move start pointer to next feild
 	} while (st != NULL);
 	cookie[length] = '\0';
-	free(buffer);
 	strcpy(ck, cookie);					// return via ck
+	fprintf(fc, "%s\n========================\n", cookie);
 
 }
