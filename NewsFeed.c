@@ -13,19 +13,42 @@
 #define ACCOUNT "email=acount.fool0@gmail.com&pass=abcd_123"
 #define HOSTNAME "www.facebook.com"
 
+void Connect_socket();
 int Create_socket(char *);
 void Send_request(char *, SSL *);
-void Reveive_response(char *, SSL *);
+void Reveive_response(char *, SSL *, int);
 void Get_cookie(char *, char *);
+void Login_and_get_response(char *);
 
-FILE *f, *fc;
+FILE *f;
+SSL *ssl;
+SSL_CTX *ctx;
+int sockfd;
 
 int main() {
 
-	SSL *ssl;
-	SSL_CTX *ctx;
+	/********************** Start **************************/
+	
+	const int RESPONSE_SIZE = 1048576;
+
+	Connect_socket();
+
+	char *response = malloc(RESPONSE_SIZE*sizeof(char));
+	Login_and_get_response(response);
+
+	/************************* End *************************/
+	printf("\n===============End=====================\n");
+	SSL_free(ssl);
+	SSL_CTX_free(ctx);
+	close(sockfd);
+	fclose(f);
+
+	return 0;
+}
+
+void Connect_socket() {
+
 	const SSL_METHOD *method;
-	int sockfd;
 
 	// initializing OpenSSL
 	OpenSSL_add_all_algorithms();
@@ -69,21 +92,19 @@ int main() {
 		printf("Successfully enabled SSL/TLS session\n");
 	}
 
-	/************* Send and Receive HTTP messages **********/
-
-	printf("\n==============Start====================\n");
+}
+void Login_and_get_response(char *resp) {
 	// first rq for login form
 	char request1[] = "HEAD / HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nConnection: keep-alive\n\n";
 	// second for post login info
 	char request2_fm[] = "POST /login.php?login_attempt=1&lwv=110 HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nCookie: %s\nContent-Type: application/x-www-form-urlencoded\nContent-Length: %d\nConnection: keep-alive\n\n%s";
 	//third for html content 
-	char request3_fm[] = "GET / HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\nAccept-Language: en-US,en;q=0.5\nAccept-Encoding: gzip, deflate, br\nCookie: %s\nConnection: keep-alive\n\n";
+	char request3_fm[] = "GET / HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\nConnection: keep-alive\n\n";
 
 	char *request2 = NULL, *request3 = NULL, *response = NULL, *cookie = NULL;
 	const int RESPONSE_SIZE = 1048576;  // 1MB
 	const int COOKIE_SIZE = 102400; 	// 100KB
 	f = fopen("fb.txt", "w");
-	fc = fopen("ck.txt", "w");
 
 	response = (char *) malloc(RESPONSE_SIZE*sizeof(char));
 	cookie = (char *) malloc(COOKIE_SIZE*sizeof(char));
@@ -91,12 +112,12 @@ int main() {
 	//request1
 	Send_request(request1, ssl);
 	memset(response, '\0', RESPONSE_SIZE*sizeof(char));
-	Reveive_response(response, ssl);
-	printf("===>Response1: \n%s\n", response);
+	Reveive_response(response, ssl, 0);
+	//printf("===>Response1: \n%s\n", response);
 	
 	memset(cookie, '\0', COOKIE_SIZE*sizeof(char));
 	Get_cookie(cookie, response);
-	printf("===>Cookie1: \n%s\n", cookie);
+	//printf("===>Cookie1: \n%s\n", cookie);
 	
 	//request2
 	request2 = (char *) malloc(strlen(request2_fm) + strlen(ACCOUNT) + strlen(cookie) + 3);
@@ -104,12 +125,12 @@ int main() {
 	//printf("===>Request2: \n%s\n", request2);
 	Send_request(request2, ssl);
 	memset(response, '\0', RESPONSE_SIZE);
-	Reveive_response(response, ssl);
-	printf("===>Response2: \n%s\n", response);
+	Reveive_response(response, ssl, 0);
+	//printf("===>Response2: \n%s\n", response);
 	
 	memset(cookie, '\0', COOKIE_SIZE);
 	Get_cookie(cookie, response);
-	printf("===>Cookie2: \n%s\n", cookie);
+	//printf("===>Cookie2: \n%s\n", cookie);
 	
 	//request3
 	request3 = (char *) malloc(strlen(request3_fm) + strlen(cookie));
@@ -117,23 +138,15 @@ int main() {
 	//printf("===>Request3: \n%s\n", request3);
 	Send_request(request3, ssl);
 	memset(response, '\0', RESPONSE_SIZE);
-	Reveive_response(response, ssl);
-	printf("===>Response3: \n%s\n", response);
+	Reveive_response(response, ssl, 1);
+	//printf("===>Response3: \n%s\n", response);
+
+	strcpy(resp, response);
 
 	free(response);
 	free(cookie);
 	free(request2);
 	free(request3);
-
-	/************************* End *************************/
-	printf("\n===============End=====================\n");
-	SSL_free(ssl);
-	close(sockfd);
-	SSL_CTX_free(ctx);
-	fclose(f);
-	fclose(fc);
-
-	return 0;
 }
 
 int Create_socket(char *hostname) {
@@ -180,21 +193,22 @@ void Send_request(char *request, SSL *ssl) {
 		}
 		if (bytes == 0) break;
 		sent += bytes;
-		printf("Sent...%d bytes\n", sent);
+		printf("Sent...%d bytes\n", bytes);
 	} while (bytes > 0);
-	printf("Send DONE\n");
+	printf("##### Send DONE #####\n");
 
 }
 
-void Reveive_response(char *resp, SSL *ssl) {
+void Reveive_response(char *resp, SSL *ssl, int body_required) {
 
-	char response[1048576];
+	char header[1048576];
+	char body[1048576] = "";
 	int bytes;						// number of bytes actually read
-	int received = 0;				// number of bytes received
+	int received = 0;				// total number of bytes received
 	int i, line_length;
 	char c[1];
 
-	memset(response, '\0', sizeof(response));				// response assign = '\0'
+	memset(header, '\0', sizeof(header));				// response assign = '\0'
 
 	/***********Try to read byte by byte***********/
 
@@ -207,23 +221,31 @@ void Reveive_response(char *resp, SSL *ssl) {
 			if (line_length == 0) break;			// empty line, so end header
 			else line_length = 0;					// else reset for new line
 		} else if ( c[0] != '\r') line_length++;	// inc length
-		response[i++] = c[0];						// add to response
-		received += bytes;							// count
+		header[i++] = c[0];						// add to response
+		received += bytes;
  	} while (1);
-	fprintf(f, "%s\n", response);
-
+	printf("##### Header DONE #####\n");
 	/***********************************************/
 
 	/********Then try to read body if needed********/
 
-	
+	char *buf = malloc(1024*sizeof(char));
+	if (body_required) {//read body
+		do {
+			memset(buf, '\0', 1024*sizeof(char));
+			bytes = SSL_read(ssl, buf, 1024);
+			if (bytes <= 0) break;
+			strcat(body, buf);
+			received += bytes;
+			printf("Received...%d bytes\n", bytes);
+		} while (1);
+		printf("\n##### Body DONE #####\n");
+	}
+	free(buf);
 
 	/***********************************************/
-	fprintf(f, "=============================\n");
-	printf("Received...%d\n", received);
-	printf("Receive DONE\n");
-	strcpy(resp, response);									// return via resp
-	
+	strcpy(resp, header);
+	strcat(resp, body);
 }
 
 void Get_cookie(char *ck, char *message) {
@@ -258,6 +280,5 @@ void Get_cookie(char *ck, char *message) {
 	} while (st != NULL);
 	cookie[length] = '\0';
 	strcpy(ck, cookie);					// return via ck
-	fprintf(fc, "%s\n========================\n", cookie);
 
 }
