@@ -12,15 +12,20 @@
 
 #define ACCOUNT "email=acount.fool0@gmail.com&pass=abcd_123"
 #define HOSTNAME "www.facebook.com"
+#define RESPONSE_SIZE 1048576
+#define COOKIE_SIZE 102400
+#define ID_LENGTH 15
+#define MAX_FRIEND 1000
 
-void Connect_socket();
 int Create_socket(char *);
+void Connect_socket();
+void Login_and_get_response(char *);
+void Get_id_friend_list(int *, char [][ID_LENGTH+1], char *);
 void Send_request(char *, SSL *);
 void Reveive_response(char *, SSL *, int);
 void Get_cookie(char *, char *);
-void Login_and_get_response(char *);
 
-FILE *f;
+FILE *f, *friend;
 SSL *ssl;
 SSL_CTX *ctx;
 int sockfd;
@@ -28,13 +33,19 @@ int sockfd;
 int main() {
 
 	/********************** Start **************************/
-	
-	const int RESPONSE_SIZE = 1048576;
 
 	Connect_socket();
 
 	char *response = malloc(RESPONSE_SIZE*sizeof(char));
 	Login_and_get_response(response);
+
+	char id[MAX_FRIEND][ID_LENGTH+1];
+	int number_of_friends, i = 0;
+	Get_id_friend_list(&number_of_friends, id, response);   //return an array include ids of friends.
+	printf("##### %d friends\n", number_of_friends);
+	for ( i = 0; i < number_of_friends; ++i) {
+		printf(" %d_%s\n", i+1, id[i]);
+	}
 
 	/************************* End *************************/
 	printf("\n===============End=====================\n");
@@ -44,6 +55,37 @@ int main() {
 	fclose(f);
 
 	return 0;
+}
+
+int Create_socket(char *hostname) {
+
+	int sockfd;
+	int port = 443;
+	struct hostent *host;
+	struct sockaddr_in dest_addr;
+
+	// get host
+	host = gethostbyname(hostname);
+	if (host == NULL) {
+		printf("Error: Cannot gethostbyname()!\n");
+		exit(0);
+	}
+
+	// create socket
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	// sockaddr struct
+	dest_addr.sin_family = AF_INET;
+	dest_addr.sin_port = htons(port);
+	dest_addr.sin_addr.s_addr = *(long *)(host->h_addr);
+
+	memset(&(dest_addr.sin_zero), '\0', 8);
+	// connect
+	if (connect(sockfd, (struct sockaddr *) &dest_addr, sizeof(struct sockaddr)) == -1) {
+		printf("Error: Could not connect to host!\n");
+	}
+
+	return sockfd;
+
 }
 
 void Connect_socket() {
@@ -102,8 +144,6 @@ void Login_and_get_response(char *resp) {
 	char request3_fm[] = "GET / HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\nConnection: keep-alive\n\n";
 
 	char *request2 = NULL, *request3 = NULL, *response = NULL, *cookie = NULL;
-	const int RESPONSE_SIZE = 1048576;  // 1MB
-	const int COOKIE_SIZE = 102400; 	// 100KB
 	f = fopen("fb.txt", "w");
 
 	response = (char *) malloc(RESPONSE_SIZE*sizeof(char));
@@ -147,36 +187,36 @@ void Login_and_get_response(char *resp) {
 	free(cookie);
 	free(request2);
 	free(request3);
+
 }
 
-int Create_socket(char *hostname) {
+void Get_id_friend_list(int *number_of_friends, char id[][ID_LENGTH+1], char *response) {
 
-	int sockfd;
-	int port = 443;
-	struct hostent *host;
-	struct sockaddr_in dest_addr;
-
-	// get host
-	host = gethostbyname(hostname);
-	if (host == NULL) {
-		printf("Error: Cannot gethostbyname()!\n");
-		exit(0);
+	char item[ID_LENGTH+1];
+	int i, k, index;
+	char *initial_chat_friends_list = strstr(response, "InitialChatFriendsList");
+	char *list = strstr(initial_chat_friends_list, "list");
+	char *end_list = strstr(list, "]");
+	end_list[1] = '\0';
+	list += 7;
+	index = 0;
+	i = 0;
+	k = 0;
+	while (i < strlen(list)) {
+		if (list[i] != '-') {
+			item[k++] = list[i++];
+		} else if (list[i+1] == '2') {
+			item[k] = '\0';
+			strcpy(id[index], item);
+			index++;
+			i += 5;
+			k = 0;
+		} else {
+			i += 5;
+			k = 0;
+		}
 	}
-
-	// create socket
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	// sockaddr struct
-	dest_addr.sin_family = AF_INET;
-	dest_addr.sin_port = htons(port);
-	dest_addr.sin_addr.s_addr = *(long *)(host->h_addr);
-
-	memset(&(dest_addr.sin_zero), '\0', 8);
-	// connect
-	if (connect(sockfd, (struct sockaddr *) &dest_addr, sizeof(struct sockaddr)) == -1) {
-		printf("Error: Could not connect to host!\n");
-	}
-
-	return sockfd;
+	*number_of_friends = index;
 
 }
 
@@ -250,7 +290,6 @@ void Reveive_response(char *resp, SSL *ssl, int body_required) {
 
 void Get_cookie(char *ck, char *message) {
 
-	const int COOKIE_SIZE = 102400;
 	int i, j, length = 0;
 	char temp[] = "Set-Cookie: ";
 	char cookie[COOKIE_SIZE];
