@@ -41,7 +41,7 @@ int main() {
 
 	char id[MAX_FRIEND][ID_LENGTH+1];
 	int number_of_friends, i = 0;
-	Get_id_friend_list(&number_of_friends, id, response);   //return an array include ids of friends.
+	Get_id_friend_list(&number_of_friends, id, response);   //return id - an array include ids of friends.
 	printf("##### %d friends\n", number_of_friends);
 	for ( i = 0; i < number_of_friends; ++i) {
 		printf(" %d_%s\n", i+1, id[i]);
@@ -190,33 +190,38 @@ void Login_and_get_response(char *resp) {
 
 }
 
-void Get_id_friend_list(int *number_of_friends, char id[][ID_LENGTH+1], char *response) {
-
+void Get_id_friend_list(int *number_of_friends, char id[][ID_LENGTH+1], char *response) { 
+	// nhận vào thông điệp response, xử lí và trả về mảng id chứa danh sách id trong friendlist và số friends number_of_friends
 	char item[ID_LENGTH+1];
 	int i, k, index;
-	char *initial_chat_friends_list = strstr(response, "InitialChatFriendsList");
-	char *list = strstr(initial_chat_friends_list, "list");
-	char *end_list = strstr(list, "]");
+	char *initial_chat_friends_list = strstr(response, "InitialChatFriendsList"); // danh sách chat bắt đầu từ InitialChatFriendsList
+	char *list = strstr(initial_chat_friends_list, "list");	// danh sách chat bạn bè bắt đầu từ trường list (trước nó là trường chứa group chat)
+	char *end_list = strstr(list, "]"); // hết trường list
 	end_list[1] = '\0';
 	list += 7;
 	index = 0;
 	i = 0;
 	k = 0;
-	while (i < strlen(list)) {
-		if (list[i] != '-') {
-			item[k++] = list[i++];
-		} else if (list[i+1] == '2') {
-			item[k] = '\0';
-			strcpy(id[index], item);
-			index++;
-			i += 5;
-			k = 0;
-		} else {
-			i += 5;
-			k = 0;
+	/* định dạng list:["10000xxxxxxxxxx-y", "10000xxxxxx-y"...]
+	mỗi phần tử trường chứa id và theo sau là dấu -  là y = 0 hoặc y = 2
+	mỗi id có 2 phần từ tương ứng với từng y, nên chỉ lấy 1 trong 2 phần tử đó
+	từng id lưu vào biến item và gán vào mảng khi đọc xong
+	*/
+	while (i < strlen(list)) {		//duyệt từng kí tự trên list
+		if (list[i] != '-') {		// nếu là số bình thường
+			item[k++] = list[i++];	// gán vào item
+		} else if (list[i+1] == '2') {	// nếu là dấu -, và tiếp sau là số 2
+			item[k] = '\0';		// thì ngắt item
+			strcpy(id[index], item);// gán vào mảng id
+			index++;		// tăng chỉ số mảng id
+			i += 5;			// dịch chuyển lên 5 kí tự
+			k = 0;			// gán lại chỉ số mảng item = 0
+		} else {		// ngược lại:  là dấu - và tiếp sau là số 0
+			i += 5;		// bỏ qua, dịch chuyển lên 5 kí tự
+			k = 0;		// gán lại chỉ số mảng item
 		}
 	}
-	*number_of_friends = index;
+	*number_of_friends = index;	// trả về số lượng friends
 
 }
 
