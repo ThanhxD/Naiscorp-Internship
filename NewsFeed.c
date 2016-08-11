@@ -19,7 +19,7 @@
 
 int Create_socket(char *);
 void Connect_socket();
-void Login_and_get_response(char *);
+void Login_and_get_response(char *, char *);
 void Get_id_friend_list(int *, char [][ID_LENGTH+1], char *);
 void Send_request(char *, SSL *);
 void Receive_response(char *, SSL *, int);
@@ -37,7 +37,8 @@ int main() {
 	Connect_socket();
 
 	char *response = malloc(RESPONSE_SIZE*sizeof(char));
-	Login_and_get_response(response);
+	char *cookie = malloc(COOKIE_SIZE*sizeof(char));
+	Login_and_get_response(response, cookie);
 
 	char id[MAX_FRIEND][ID_LENGTH+1];
 	int number_of_friends, i = 0;
@@ -51,9 +52,9 @@ int main() {
 
 	// test send 1 request for id[0]
 	char *request_fm = "GET /%s HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\nConnection: keep-alive\n\n";
-	char *request = NULL, *cookie = NULL;
-	cookie = (char *) malloc(COOKIE_SIZE*sizeof(char));
-	Get_cookie(cookie, response);
+	char *request = NULL;// *cookie = NULL;
+	//cookie = (char *) malloc(COOKIE_SIZE*sizeof(char));
+	//Get_cookie(cookie, response);
 	printf("\n Cookie: \n %s \n", cookie);
 	const int REQUEST_SIZE = 1048576;//strlen(request_fm) + 15 + strlen(cookie);
 	request = (char *) malloc(REQUEST_SIZE);
@@ -158,7 +159,7 @@ void Connect_socket() {
 	}
 
 }
-void Login_and_get_response(char *resp) {
+void Login_and_get_response(char *resp, char *ck) {
 	// first rq for login form
 	char request1[] = "HEAD / HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nConnection: keep-alive\n\n";
 	// second for post login info
@@ -193,6 +194,7 @@ void Login_and_get_response(char *resp) {
 	
 	memset(cookie, '\0', COOKIE_SIZE);
 	Get_cookie(cookie, response);
+	strcpy(ck, cookie);
 	//printf("===>Cookie2: \n%s\n", cookie);
 	
 	//request3
