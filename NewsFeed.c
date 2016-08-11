@@ -22,7 +22,7 @@ void Connect_socket();
 void Login_and_get_response(char *);
 void Get_id_friend_list(int *, char [][ID_LENGTH+1], char *);
 void Send_request(char *, SSL *);
-void Reveive_response(char *, SSL *, int);
+void Receive_response(char *, SSL *, int);
 void Get_cookie(char *, char *);
 
 FILE *f, *friend;
@@ -41,11 +41,34 @@ int main() {
 
 	char id[MAX_FRIEND][ID_LENGTH+1];
 	int number_of_friends, i = 0;
-	Get_id_friend_list(&number_of_friends, id, response);   //return id - an array include ids of friends.
+	Get_id_friend_list(&number_of_friends, id, response);   //return an array include ids of friends.
 	printf("##### %d friends\n", number_of_friends);
 	for ( i = 0; i < number_of_friends; ++i) {
 		printf(" %d_%s\n", i+1, id[i]);
 	}
+	printf("\n ################### \n");
+	//printf("\nResponse: \n %s\n######################\n", response);
+
+	// test send 1 request for id[0]
+	char *request_fm = "GET /%s HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\nConnection: keep-alive\n\n";
+	char *request = NULL, *cookie = NULL;
+	cookie = (char *) malloc(COOKIE_SIZE*sizeof(char));
+	Get_cookie(cookie, response);
+	printf("\n Cookie: \n %s \n", cookie);
+	const int REQUEST_SIZE = 1048576;//strlen(request_fm) + 15 + strlen(cookie);
+	request = (char *) malloc(REQUEST_SIZE);
+	memset(request, '\0', REQUEST_SIZE);
+	sprintf(request, request_fm, id[0], cookie);
+	printf("\n Request: \n %s \n", request);
+	Send_request(request, ssl);
+	memset(response, '\0', RESPONSE_SIZE);
+	Receive_response(response, ssl, 1);
+	printf("\n GET DONE \n");
+	printf("\n Response: \n %s \n", response);
+
+	free(request);
+	free(cookie);
+	free(response);	
 
 	/************************* End *************************/
 	printf("\n===============End=====================\n");
@@ -152,7 +175,7 @@ void Login_and_get_response(char *resp) {
 	//request1
 	Send_request(request1, ssl);
 	memset(response, '\0', RESPONSE_SIZE*sizeof(char));
-	Reveive_response(response, ssl, 0);
+	Receive_response(response, ssl, 0);
 	//printf("===>Response1: \n%s\n", response);
 	
 	memset(cookie, '\0', COOKIE_SIZE*sizeof(char));
@@ -165,7 +188,7 @@ void Login_and_get_response(char *resp) {
 	//printf("===>Request2: \n%s\n", request2);
 	Send_request(request2, ssl);
 	memset(response, '\0', RESPONSE_SIZE);
-	Reveive_response(response, ssl, 0);
+	Receive_response(response, ssl, 0);
 	//printf("===>Response2: \n%s\n", response);
 	
 	memset(cookie, '\0', COOKIE_SIZE);
@@ -178,7 +201,7 @@ void Login_and_get_response(char *resp) {
 	//printf("===>Request3: \n%s\n", request3);
 	Send_request(request3, ssl);
 	memset(response, '\0', RESPONSE_SIZE);
-	Reveive_response(response, ssl, 1);
+	Receive_response(response, ssl, 1);
 	//printf("===>Response3: \n%s\n", response);
 
 	strcpy(resp, response);
@@ -190,38 +213,33 @@ void Login_and_get_response(char *resp) {
 
 }
 
-void Get_id_friend_list(int *number_of_friends, char id[][ID_LENGTH+1], char *response) { 
-	// nhận vào thông điệp response, xử lí và trả về mảng id chứa danh sách id trong friendlist và số friends number_of_friends
+void Get_id_friend_list(int *number_of_friends, char id[][ID_LENGTH+1], char *response) {
+
 	char item[ID_LENGTH+1];
 	int i, k, index;
-	char *initial_chat_friends_list = strstr(response, "InitialChatFriendsList"); // danh sách chat bắt đầu từ InitialChatFriendsList
-	char *list = strstr(initial_chat_friends_list, "list");	// danh sách chat bạn bè bắt đầu từ trường list (trước nó là trường chứa group chat)
-	char *end_list = strstr(list, "]"); // hết trường list
+	char *initial_chat_friends_list = strstr(response, "InitialChatFriendsList");
+	char *list = strstr(initial_chat_friends_list, "list");
+	char *end_list = strstr(list, "]");
 	end_list[1] = '\0';
 	list += 7;
 	index = 0;
 	i = 0;
 	k = 0;
-	/* định dạng list:["10000xxxxxxxxxx-y", "10000xxxxxx-y"...]
-	mỗi phần tử trường chứa id và theo sau là dấu -  là y = 0 hoặc y = 2
-	mỗi id có 2 phần từ tương ứng với từng y, nên chỉ lấy 1 trong 2 phần tử đó
-	từng id lưu vào biến item và gán vào mảng khi đọc xong
-	*/
-	while (i < strlen(list)) {		//duyệt từng kí tự trên list
-		if (list[i] != '-') {		// nếu là số bình thường
-			item[k++] = list[i++];	// gán vào item
-		} else if (list[i+1] == '2') {	// nếu là dấu -, và tiếp sau là số 2
-			item[k] = '\0';		// thì ngắt item
-			strcpy(id[index], item);// gán vào mảng id
-			index++;		// tăng chỉ số mảng id
-			i += 5;			// dịch chuyển lên 5 kí tự
-			k = 0;			// gán lại chỉ số mảng item = 0
-		} else {		// ngược lại:  là dấu - và tiếp sau là số 0
-			i += 5;		// bỏ qua, dịch chuyển lên 5 kí tự
-			k = 0;		// gán lại chỉ số mảng item
+	while (i < strlen(list)) {
+		if (list[i] != '-') {
+			item[k++] = list[i++];
+		} else if (list[i+1] == '2') {
+			item[k] = '\0';
+			strcpy(id[index], item);
+			index++;
+			i += 5;
+			k = 0;
+		} else {
+			i += 5;
+			k = 0;
 		}
 	}
-	*number_of_friends = index;	// trả về số lượng friends
+	*number_of_friends = index;
 
 }
 
@@ -244,7 +262,7 @@ void Send_request(char *request, SSL *ssl) {
 
 }
 
-void Reveive_response(char *resp, SSL *ssl, int body_required) {
+void Receive_response(char *resp, SSL *ssl, int body_required) {
 
 	char header[1048576];
 	char body[1048576] = "";
