@@ -25,7 +25,7 @@ void Send_request(char *, SSL *);
 void Receive_response(char *, SSL *, int);
 void Get_cookie(char *, char *);
 
-FILE *f, *friend;
+FILE *f;
 SSL *ssl;
 SSL_CTX *ctx;
 int sockfd;
@@ -36,8 +36,8 @@ int main() {
 
 	Connect_socket();
 
-	char *response = malloc(RESPONSE_SIZE*sizeof(char));
-	char *cookie = malloc(COOKIE_SIZE*sizeof(char));
+	char *response = (char *) malloc(RESPONSE_SIZE*sizeof(char));
+	char *cookie = (char *) malloc(COOKIE_SIZE*sizeof(char));
 	Login_and_get_response(response, cookie);
 
 	char id[MAX_FRIEND][ID_LENGTH+1];
@@ -48,15 +48,12 @@ int main() {
 		printf(" %d_%s\n", i+1, id[i]);
 	}
 	printf("\n ################### \n");
-	//printf("\nResponse: \n %s\n######################\n", response);
+	printf("\nResponse: \n %s\n######################\n", response);
 
 	// test send 1 request for id[0]
-	char *request_fm = "GET /%s HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\nConnection: keep-alive\n\n";
-	char *request = NULL;// *cookie = NULL;
-	//cookie = (char *) malloc(COOKIE_SIZE*sizeof(char));
-	//Get_cookie(cookie, response);
-	printf("\n Cookie: \n %s \n", cookie);
-	const int REQUEST_SIZE = 1048576;//strlen(request_fm) + 15 + strlen(cookie);
+	char *request_fm = "GET /profile.php?id=%s HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\n\n";
+	char *request = NULL;
+	const int REQUEST_SIZE = strlen(request_fm) + 15 + strlen(cookie);
 	request = (char *) malloc(REQUEST_SIZE);
 	memset(request, '\0', REQUEST_SIZE);
 	sprintf(request, request_fm, id[0], cookie);
@@ -76,7 +73,6 @@ int main() {
 	SSL_free(ssl);
 	SSL_CTX_free(ctx);
 	close(sockfd);
-	fclose(f);
 
 	return 0;
 }
@@ -165,7 +161,7 @@ void Login_and_get_response(char *resp, char *ck) {
 	// second for post login info
 	char request2_fm[] = "POST /login.php?login_attempt=1&lwv=110 HTTP/1.1\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nCookie: %s\nContent-Type: application/x-www-form-urlencoded\nContent-Length: %d\nConnection: keep-alive\n\n%s";
 	//third for html content 
-	char request3_fm[] = "GET / HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\nConnection: keep-alive\n\n";
+	char request3_fm[] = "GET / HTTP/1.0\nHost: www.facebook.com\nUser-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0\nAccept: text/html\nAccept-Language: en-US,en;q=0.5\nCookie: %s\n\n";
 
 	char *request2 = NULL, *request3 = NULL, *response = NULL, *cookie = NULL;
 	f = fopen("fb.txt", "w");
@@ -194,7 +190,6 @@ void Login_and_get_response(char *resp, char *ck) {
 	
 	memset(cookie, '\0', COOKIE_SIZE);
 	Get_cookie(cookie, response);
-	strcpy(ck, cookie);
 	//printf("===>Cookie2: \n%s\n", cookie);
 	
 	//request3
@@ -207,11 +202,13 @@ void Login_and_get_response(char *resp, char *ck) {
 	//printf("===>Response3: \n%s\n", response);
 
 	strcpy(resp, response);
+	strcpy(ck, cookie);
 
 	free(response);
 	free(cookie);
 	free(request2);
 	free(request3);
+	fclose(f);
 
 }
 
@@ -294,7 +291,7 @@ void Receive_response(char *resp, SSL *ssl, int body_required) {
 
 	/********Then try to read body if needed********/
 
-	char *buf = malloc(1024*sizeof(char));
+	char *buf = (char *) malloc(1024*sizeof(char));
 	if (body_required) {//read body
 		do {
 			memset(buf, '\0', 1024*sizeof(char));
@@ -311,6 +308,7 @@ void Receive_response(char *resp, SSL *ssl, int body_required) {
 	/***********************************************/
 	strcpy(resp, header);
 	strcat(resp, body);
+	fprintf(f, "==============\n%s\n", resp);
 }
 
 void Get_cookie(char *ck, char *message) {
